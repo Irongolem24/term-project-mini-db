@@ -7,6 +7,7 @@
 
 # 빌드 결과물
 minidb
+minidb_debug
 x64/
 x86/
 Debug/
@@ -18,6 +19,14 @@ Release/
 *.exp
 *.lib
 
+# macOS 디버그 심볼
+*.dSYM/
+
+# 테스트 빌드 결과물
+term-project/tests/test_create
+term-project/tests/test_create.dSYM/
+
 # Claude / OMC
 .claude/
 .omc/
+*/.omc/
