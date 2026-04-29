@@ -6,6 +6,7 @@
 *.sln.docstates
 
 # 빌드 결과물
+minidb
 x64/
 x86/
 Debug/
