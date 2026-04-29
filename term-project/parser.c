@@ -96,7 +96,7 @@ static void parse_select(Database* db, char* tokens[], int count) {
 }
 
 static void parse_create(Database* db, char* tokens[], int count) {
-	if (count < 4 || stricmp(tokens[1], "TABLE") != 0) {
+	if (count < 4 || strcasecmp(tokens[1], "TABLE") != 0) {
 		printf("error: syntax is CREATE TABLE <name> (col TYPE [PRIMARY KEY], ...)\n");
 		return;
 	}
@@ -106,7 +106,7 @@ static void parse_create(Database* db, char* tokens[], int count) {
 	int col_count = 0;
 
 	char col_str[1024];
-	strncpy(col_str, tokens[3], sizeof(col_str) - 1);
+	strncpy_s(col_str, sizeof(col_str), tokens[3], sizeof(col_str) - 1);
 	col_str[sizeof(col_str) - 1] = '\0';
 
 	char* start = col_str;
@@ -118,8 +118,48 @@ static void parse_create(Database* db, char* tokens[], int count) {
 	}
 
 	char* ctx1;
-	char* col_def = strok(start, ",", &ctx1);
+	char* col_def = strtok_s(start, ",", &ctx1);
+	while (col_def && col_count < MAX_COLUMNS) {
 
+		char* ctx2;
+		char* col_name = strtok_s(col_def, " \t", &ctx2);
+		char* type_str = strtok_s(NULL, " \t", &ctx2);
+		char* pk1 = strtok_s(NULL, " \t", &ctx2);
+		char* pk2 = strtok_s(NULL, " \t", &ctx2);
+
+		if (!col_name || !type_str) {
+			printf("error: invalid column definition");
+			break;
+		}
+
+		DataType type;
+		if (strcasecmp(type_str, "INT") == 0) type = DATA_INT;
+		else if (strcasecmp(type_str, "TEXT") == 0) type = DATA_TEXT;
+		else if (strcasecmp(type_str, "FLOAT") == 0) type = DATA_FLOAT;
+		else {
+			printf("error: unknown type '%s'\n", type_str);
+			return;
+		}
+
+		int is_pk = (pk1 && strcasecmp(pk1, "PRIMARY") == 0 &&
+			pk2 && strcasecmp(pk2, "KEY") == 0);
+
+		strncpy_s(cols[col_count].name, MAX_NAME_LEN, col_name, MAX_NAME_LEN - 1);
+		cols[col_count].name[MAX_NAME_LEN - 1] = '\0';
+		cols[col_count].type = type;
+		cols[col_count].is_pk = is_pk;
+		col_count++;
+
+		col_def = strtok_s(NULL, ",", &ctx1);
+	}
+
+	if (col_count == 0) {
+		printf("error: no columns defined\n");
+		return;
+	}
+
+	Table* t = table_create(db, table_name, cols, col_count);
+	if (t) printf("Success\n");
 }
 
 static void dispatch(Database* db, char* tokens[], int count) {
@@ -136,7 +176,7 @@ static void dispatch(Database* db, char* tokens[], int count) {
 	else if (strcasecmp(cmd, "DROP") == 0)       parse_drop(db, tokens, count);
 	else if (strcasecmp(cmd, "INSERT") == 0)     parse_insert(db, tokens, count);
 	else if (strcasecmp(cmd, "SELECT") == 0)     parse_select(db, tokens, count);
-	else if (strcasecmp(cmd, "CREATE") == 0)     printf("todo");
+	else if (strcasecmp(cmd, "CREATE") == 0)     parse_create(db, tokens, count);
 	// UPDATE, DELETE, CREATE, SAVE, LOAD 는 동일한 패턴으로 추가
 	else    printf("error: unknown command '%s'\n", cmd);
 }

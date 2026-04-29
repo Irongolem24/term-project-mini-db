@@ -21,6 +21,9 @@
     <ClCompile Include="parser.c">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="db.c">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="parser.h">

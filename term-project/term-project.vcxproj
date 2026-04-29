@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="db.c" />
     <ClCompile Include="main.c" />
     <ClCompile Include="parser.c" />
   </ItemGroup>

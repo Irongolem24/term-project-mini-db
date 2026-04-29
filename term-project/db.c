@@ -3,6 +3,10 @@
 #include <string.h>
 #include "db.h"
 
+#ifdef _WIN32
+	#define strcasecmp _stricmp
+#endif
+
 Database* db_create() {
 	Database* db = (Database*)malloc(sizeof(Database));
 
@@ -15,7 +19,7 @@ Database* db_create() {
 Table* table_find(Database* db, const char* name) {
 	Table* t = db->tables;
 	while (t != NULL) {
-		if (stricmp(t->name, name) == 0) return t;
+		if (strcasecmp(t->name, name) == 0) return t;
 		t = t->next;
 	}
 	return NULL;
@@ -33,7 +37,7 @@ Table* table_create(
 	}
 
 	Table* t = (Table*)malloc(sizeof(Table));
-	strncpy(t->name, name, MAX_NAME_LEN - 1);
+	strncpy_s(t->name, MAX_NAME_LEN, name, MAX_NAME_LEN - 1);
 	t->name[MAX_NAME_LEN - 1] = '\0';
 
 	for (int i = 0; i < col_count; i++) {
@@ -72,7 +76,7 @@ Row* row_insert(Table* t, Cell* cells) {
 		row->cells[i] = cells[i];
 
 		if (cells[i].type == DATA_TEXT && cells[i].text_val != NULL) {
-			row->cells[i].text_val = strdup(cells[i].text_val);
+			row->cells[i].text_val = _strdup(cells[i].text_val);
 		}
 	}
 
@@ -141,7 +145,7 @@ void table_drop(Database* db, const char* name) {
 	Table* cur = db->tables;
 
 	while (cur != NULL) {
-		if (stricmp(cur->name, name) == 0) {
+		if (strcasecmp(cur->name, name) == 0) {
 			Row* r = cur->rows;
 			while (r != NULL) {
 				Row* next = r->next;
