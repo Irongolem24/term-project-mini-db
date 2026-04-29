@@ -3,6 +3,12 @@
 #ifndef DB_H
 #define DB_H
 
+#ifndef _WIN32
+#define strncpy_s(dest, destsz, src, count) strncpy(dest, src, count)
+#define strtok_s strtok_r
+#define _strdup strdup
+#endif
+
 #define MAX_COLUMNS 8
 #define MAX_NAME_LEN 64
 
