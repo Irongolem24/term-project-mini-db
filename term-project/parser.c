@@ -196,6 +196,14 @@ static void parse_create(Database* db, char* tokens[], int count) {
 	if (t) printf("Success\n");
 }
 
+static void parse_clear() {
+	#ifdef _WIN32
+		system("cls");
+	#else
+		system("clear");
+	#endif
+}
+
 static void dispatch(Database* db, char* tokens[], int count) {
 	if (count == 0) return;
 
@@ -211,6 +219,7 @@ static void dispatch(Database* db, char* tokens[], int count) {
 	else if (strcasecmp(cmd, "INSERT") == 0)     parse_insert(db, tokens, count);
 	else if (strcasecmp(cmd, "SELECT") == 0)     parse_select(db, tokens, count);
 	else if (strcasecmp(cmd, "CREATE") == 0)     parse_create(db, tokens, count);
+	else if (strcasecmp(cmd, "CLEAR") == 0)		parse_clear();
 	// UPDATE, DELETE, CREATE, SAVE, LOAD 는 동일한 패턴으로 추가
 	else    printf("error: unknown command '%s'\n", cmd);
 }
