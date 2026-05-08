@@ -196,6 +196,14 @@ static void parse_create(Database* db, char* tokens[], int count) {
 	if (t) printf("Success\n");
 }
 
+static void parse_clear(void) {
+#ifdef _WIN32
+	system("cls");
+#else
+	system("clear");
+#endif
+}
+
 static void dispatch(Database* db, char* tokens[], int count) {
 	if (count == 0) return;
 
@@ -204,6 +212,8 @@ static void dispatch(Database* db, char* tokens[], int count) {
 	if (strcasecmp(cmd, "EXIT") == 0
 		|| strcasecmp(cmd, "QUIT") == 0) { /* main에서 처리 */
 	}
+	else if (strcasecmp(cmd, "CLEAR") == 0
+		|| strcasecmp(cmd, "CLEAN") == 0) { parse_clear(); }
 	else if (strcasecmp(cmd, "HELP") == 0)       printf("(help 출력)\n");
 	else if (strcasecmp(cmd, "SHOW") == 0)       parse_show(db, tokens, count);
 	else if (strcasecmp(cmd, "DESCRIBE") == 0)   parse_describe(db, tokens, count);
