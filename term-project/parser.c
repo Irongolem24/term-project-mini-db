@@ -66,7 +66,30 @@ static void parse_describe(Database* db, char* tokens[], int count) {
 		printf("error: syntax is DESCRIBE <table>\n");
 		return;
 	}
-	//todo: 실행
+	
+	Table* t = table_find(db, tokens[1]);
+	if (t == NULL) {
+		printf("error: table '%s' not found\n", tokens[1]);
+		return;
+	}
+
+	printf("%-20s %-10s %s\n", "name", "type", "PK");
+	printf("--------------------------------------------\n");
+	
+	for (int i = 0; i < t->col_count; i++) {
+		char* type_str;
+		switch (t->columns[i].type) {
+			case DATA_INT: type_str = "INT"; break;
+			case DATA_FLOAT: type_str = "FLOAT"; break;
+			case DATA_TEXT: type_str = "TEXT"; break;
+			default: type_str = "?"; break;
+		}
+
+		printf("%-20s %-10s %s\n",
+			t->columns[i].name,
+			type_str,
+			t->columns[i].is_pk ? "YES" : "NO");
+	}
 }
 
 static void parse_drop(Database* db, char* tokens[], int count) {
