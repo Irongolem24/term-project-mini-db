@@ -106,7 +106,68 @@ static void parse_insert(Database* db, char* tokens[], int count) {
 		printf("error: syntax is INSERT INTO <table> VALUES (val, ...)\n");
 		return;
 	}
-	//todo: 실행
+	
+	Table* t = table_find(db, tokens[2]);
+	if (t == NULL) {
+		printf("error: table '%s' not found\n", tokens[2]);
+		return;
+	}
+
+	char val_str[1024];
+	strncpy_s(val_str, sizeof(val_str), tokens[4], sizeof(val_str) - 1);
+
+	char* start = val_str;
+	if (*start == '(') start++;
+	int len = (int)strlen(start);
+	if (len > 0 && start[len - 1] == ')') start[len - 1] = '\0';
+
+	Cell cells[MAX_COLUMNS];
+	int val_count = 0;
+
+	char* ctx;
+	char* val = strtok_s(start, ",", &ctx);
+	while (val && val_count < t->col_count) {
+		while (*val == ' ') val++;
+
+		Column* col = &t->columns[val_count];
+		Cell* c = &cells[val_count];
+		c->type = col->type;
+
+		if (col->type == DATA_TEXT) {
+			if (*val == '\'') val++;
+
+			int vlen = (int)strlen(val);
+			if (vlen > 0 && val[vlen - 1] == '\'') {
+				val[vlen - 1] = '\0';
+			}
+			c->text_val = val;
+		}
+		else if (col->type == DATA_INT) {
+			c->int_val = atoi(val);
+		}
+		else if (col->type == DATA_FLOAT) {
+			c->float_val = atof(val);
+		}
+
+		val_count++;
+		val = strtok_s(NULL, ",", &ctx);
+	}
+
+	if (val_count != t->col_count) {
+		printf("error: expected %d values, got %d\n", t->col_count, val_count);
+		return;
+	}
+
+	for (int i = 0; i < t->col_count; i++) {
+		if (t->columns[i].is_pk && row_find_by_pk(t, &cells[i]) != NULL) {
+			printf("error: duplicate PK\n");
+			return;
+		}
+	}
+
+	row_insert(t, cells);
+	printf("Success\n");
+
 }
 
 static void parse_select(Database* db, char* tokens[], int count) {
@@ -115,9 +176,37 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		return;
 	}
 	char* table_name = tokens[3];
+	Table* t = table_find(db, table_name);
+	if (t == NULL) {
+		printf("error: table '%s' not found\n", table_name);
+		return;
+	}
 
 	if (count == 4) {
-		printf("(select all from '%s' 실행)\n", table_name);
+		for (int i = 0; i < t->col_count; i++) {
+			printf("%-20s", t->columns[i].name);
+		}
+		printf("\n");
+		printf("--------------------------------------------\n");
+
+		if (t->rows == NULL) {
+			printf("(no rows)\n");
+			return;
+		}
+
+		Row* r = t->rows;
+		while (r != NULL) {
+			for (int i = 0; i < t->col_count; i++) {
+				Cell* c = &r->cells[i];
+				if (c->type == DATA_INT) printf("%-20d", c->int_val);
+				else if (c->type == DATA_FLOAT) printf("%-20f", c->float_val);
+				else if (c->type == DATA_TEXT) printf("%-20s", c->text_val);
+			}
+			printf("\n");
+			r = r->next;
+		}
+		printf("(%d rows)\n", t->row_count);
+		
 	}
 	else if (count == 8 && strcasecmp(tokens[4], "WHERE") == 0) {
 		// tokens[5]=col  tokens[6]='='  tokens[7]=val
