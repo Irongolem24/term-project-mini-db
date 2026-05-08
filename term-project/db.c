@@ -157,6 +157,7 @@ void table_drop(Database* db, const char* name) {
 
 			free(cur);
 			db->table_count--;
+			printf("Success\n");
 			return;
 		}
 		prev = cur;
