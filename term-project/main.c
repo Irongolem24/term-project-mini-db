@@ -13,7 +13,7 @@ int main(void) {
     while (1) {
         printf("db> ");
         if (!fgets(buf, sizeof(buf), stdin)) break;
-        if (strcasecmp(buf, "exit") == 0) break;
+        if (strcasecmp(buf, "exit\n") == 0) break;
         parse_command(db, buf);
     }
 

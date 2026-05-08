@@ -47,7 +47,18 @@ static void parse_show(Database* db, char* tokens[], int count) {
 		printf("error: syntax is SHOW TABLES\n");
 		return;
 	}
-	//todo: show 실행
+	
+	if (db->table_count == 0) {
+		printf("(no tables)\n");
+		return;
+	}
+
+	Table* t = db->tables;
+	while (t != NULL) {
+		printf("%s\n", t->name);
+		t = t->next;
+	}
+	printf("(%d tables)\n", db->table_count);
 }
 
 static void parse_describe(Database* db, char* tokens[], int count) {
