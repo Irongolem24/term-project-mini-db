@@ -97,7 +97,8 @@ static void parse_drop(Database* db, char* tokens[], int count) {
 		printf("error: syntax is DROP TABLE <name>\n");
 		return;
 	}
-	//todo: 실행
+	
+	table_drop(db, tokens[2]);
 }
 
 static void parse_insert(Database* db, char* tokens[], int count) {
