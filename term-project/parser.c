@@ -286,6 +286,49 @@ static void parse_create(Database* db, char* tokens[], int count) {
 	if (t) printf("Success\n");
 }
 
+static void parse_delete(Database* db, char* tokens[], int count) {
+	if (count < 7 || strcasecmp(tokens[1], "from") != 0
+		|| strcasecmp(tokens[3], "where") != 0) {
+		printf("error: syntax is DELETE FROM <table> WHERE <col> = <val>\n");
+		return;
+	}
+
+	Table* t = table_find(db, tokens[2]);
+	if (t == NULL) {
+		printf("error: table '%s' not found\n", tokens[2]);
+		return;
+	}
+
+	char* col_name = tokens[4];
+	int col_idx = -1;
+	for (int i = 0; i < t->col_count; i++) {
+		if (strcasecmp(t->columns[i].name, col_name) == 0) {
+			col_idx = i;
+			break;
+		}
+	}
+	if (col_idx < 0) {
+		printf("error: column '%s' not found\n", col_name);
+		return;
+	}
+
+	char* val_str = tokens[6];
+	Cell key;
+	key.type = t->columns[col_idx].type;
+
+	if (key.type == DATA_INT)        key.int_val = atoi(val_str);
+	else if (key.type == DATA_FLOAT) key.float_val = atof(val_str);
+	else {
+		if (*val_str == '\'') val_str++;
+		int vlen = (int)strlen(val_str);
+		if (vlen > 0 && val_str[vlen - 1] == '\'') val_str[vlen - 1] = '\0';
+		key.text_val = val_str;
+	}
+
+	row_delete(t, &key);
+	printf("Success\n");
+}
+
 static void parse_clear() {
 	#ifdef _WIN32
 		system("cls");
@@ -309,6 +352,7 @@ static void dispatch(Database* db, char* tokens[], int count) {
 	else if (strcasecmp(cmd, "INSERT") == 0)     parse_insert(db, tokens, count);
 	else if (strcasecmp(cmd, "SELECT") == 0)     parse_select(db, tokens, count);
 	else if (strcasecmp(cmd, "CREATE") == 0)     parse_create(db, tokens, count);
+	else if (strcasecmp(cmd, "DELETE") == 0)    parse_delete(db, tokens, count);
 	else if (strcasecmp(cmd, "CLEAR") == 0)		parse_clear();
 	// UPDATE, DELETE, CREATE, SAVE, LOAD 는 동일한 패턴으로 추가
 	else    printf("error: unknown command '%s'\n", cmd);
