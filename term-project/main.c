@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <string.h>
 #include "parser.h"
+#include "storage.h"
+
+#define DB_FILE "data.txt"
 
 #ifdef _WIN32
     #define strcasecmp _stricmp
@@ -10,6 +13,8 @@ int main(void) {
     Database* db = db_create();
     char buf[1024];
 
+    db_load(db, DB_FILE);
+
     while (1) {
         printf("db> ");
         if (!fgets(buf, sizeof(buf), stdin)) break;
@@ -17,6 +22,7 @@ int main(void) {
         parse_command(db, buf);
     }
 
+    db_save(db, DB_FILE);
     db_free(db);
     return 0;
 }
