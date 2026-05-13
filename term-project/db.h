@@ -12,6 +12,8 @@
 #define MAX_COLUMNS 8
 #define MAX_NAME_LEN 64
 
+#define MAX_CONDITIONS 4
+
 typedef enum {
 	DATA_INT,
 	DATA_FLOAT,
@@ -52,6 +54,32 @@ typedef struct {
 	int table_count;
 } Database;
 
+typedef enum {
+	OP_EQ,   // =
+	OP_NEQ,  // !=
+	OP_LT,   // <
+	OP_GT,   // >
+	OP_LTE,  // <=
+	OP_GTE   // >=
+} Operator;
+
+typedef enum {
+	LOGIC_AND,
+	LOGIC_OR
+} LogicOp;
+
+typedef struct {
+	int      col_idx;
+	Operator op;
+	Cell     val;
+} Condition;
+
+typedef struct {
+	Condition conds[MAX_CONDITIONS];
+	LogicOp   logic[MAX_CONDITIONS - 1]; 
+	int       count;
+} WhereClause;
+
 Database* db_create(void);
 void db_free(Database* db);
 
@@ -62,6 +90,8 @@ void table_drop(Database* db, const char* name);
 Row* row_insert(Table* t, Cell* cells);
 Row* row_find_by_pk(Table* t, Cell* pk_val);
 void row_delete(Table* t, Cell* pk_val);
+int row_matches_where(Row* r, WhereClause* wc);
+int rows_delete_where(Table* t, WhereClause* wc);
 
 #endif
 

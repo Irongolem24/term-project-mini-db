@@ -175,3 +175,73 @@ void db_free(Database* db) {
 	}
 	free(db);
 }
+
+static int cell_compare(Cell* a, Cell* b) {
+	if (a->type != b->type) return -1;
+
+	switch (a->type) {
+		case DATA_INT:
+			return (a->int_val > b->int_val) - (a->int_val < b->int_val);
+		case DATA_FLOAT:
+			return (a->float_val > b->float_val) - (a->float_val < b->float_val);
+		case DATA_TEXT:
+			return strcmp(a->text_val, b->text_val);
+	}
+	return 0;
+
+}
+
+static int eval_op(int cmp, Operator op) {
+	switch (op) {
+		case OP_EQ:  return cmp == 0;
+		case OP_NEQ: return cmp != 0;
+		case OP_LT:  return cmp < 0;
+		case OP_GT:  return cmp > 0;
+		case OP_LTE: return cmp <= 0;
+		case OP_GTE: return cmp >= 0;
+	}
+	return 0;
+}
+
+int rows_delete_where(Table* t, WhereClause* wc) {
+	Row* prev = NULL;
+	Row* cur = t->rows;
+	int deleted = 0;
+
+	while (cur != NULL) {
+		Row* next = cur->next;
+		if (row_matches_where(cur, wc)) {
+			if (prev == NULL) t->rows = next;
+			else prev->next = next;
+			row_free(cur, t->col_count);
+			t->row_count--;
+			deleted++;
+		} else {
+			prev = cur;
+		}
+		cur = next;
+	}
+	return deleted;
+}
+
+int row_matches_where(Row* r, WhereClause* wc) {
+	if (wc->count == 0) return 1;
+
+	int result = eval_op(
+		cell_compare(&r->cells[wc->conds[0].col_idx], &wc->conds[0].val),
+		wc->conds[0].op
+	);
+
+	for (int i = 1; i < wc->count; i++) {
+		int next = eval_op(
+			cell_compare(&r->cells[wc->conds[i].col_idx], &wc->conds[i].val),
+			wc->conds[i].op
+		);
+		if (wc->logic[i - 1] == LOGIC_AND)
+			result = result && next;
+		else
+			result = result || next;
+	}
+
+	return result;
+}

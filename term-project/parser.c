@@ -4,7 +4,7 @@
 #include "parser.h"
 
 #ifdef _WIN32
-	#define strcasecmp _stricmp
+#define strcasecmp _stricmp
 #endif
 
 // 토크나이저
@@ -47,7 +47,7 @@ static void parse_show(Database* db, char* tokens[], int count) {
 		printf("error: syntax is SHOW TABLES\n");
 		return;
 	}
-	
+
 	if (db->table_count == 0) {
 		printf("(no tables)\n");
 		return;
@@ -66,7 +66,7 @@ static void parse_describe(Database* db, char* tokens[], int count) {
 		printf("error: syntax is DESCRIBE <table>\n");
 		return;
 	}
-	
+
 	Table* t = table_find(db, tokens[1]);
 	if (t == NULL) {
 		printf("error: table '%s' not found\n", tokens[1]);
@@ -75,14 +75,14 @@ static void parse_describe(Database* db, char* tokens[], int count) {
 
 	printf("%-20s %-10s %s\n", "name", "type", "PK");
 	printf("--------------------------------------------\n");
-	
+
 	for (int i = 0; i < t->col_count; i++) {
 		char* type_str;
 		switch (t->columns[i].type) {
-			case DATA_INT: type_str = "INT"; break;
-			case DATA_FLOAT: type_str = "FLOAT"; break;
-			case DATA_TEXT: type_str = "TEXT"; break;
-			default: type_str = "?"; break;
+		case DATA_INT: type_str = "INT"; break;
+		case DATA_FLOAT: type_str = "FLOAT"; break;
+		case DATA_TEXT: type_str = "TEXT"; break;
+		default: type_str = "?"; break;
 		}
 
 		printf("%-20s %-10s %s\n",
@@ -97,7 +97,7 @@ static void parse_drop(Database* db, char* tokens[], int count) {
 		printf("error: syntax is DROP TABLE <name>\n");
 		return;
 	}
-	
+
 	table_drop(db, tokens[2]);
 }
 
@@ -106,7 +106,7 @@ static void parse_insert(Database* db, char* tokens[], int count) {
 		printf("error: syntax is INSERT INTO <table> VALUES (val, ...)\n");
 		return;
 	}
-	
+
 	Table* t = table_find(db, tokens[2]);
 	if (t == NULL) {
 		printf("error: table '%s' not found\n", tokens[2]);
@@ -206,13 +206,31 @@ static void parse_select(Database* db, char* tokens[], int count) {
 			r = r->next;
 		}
 		printf("(%d rows)\n", t->row_count);
-		
+
 	}
-	else if (count == 8 && strcasecmp(tokens[4], "WHERE") == 0) {
-		// tokens[5]=col  tokens[6]='='  tokens[7]=val
-		char* col = tokens[5];
-		char* val = tokens[7];
-		printf("(select from '%s' where %s = %s 실행)\n", table_name, col, val);
+	else if (count > 4 && strcasecmp(tokens[4], "WHERE") == 0) {
+		WhereClause wc;
+		if (!parse_where(t, tokens, 4, count, &wc)) return;
+
+		for (int i = 0; i < t->col_count; i++) printf("%-20s", t->columns[i].name);
+		printf("\n--------------------------------------------\n");
+
+		int found = 0;
+		Row* r = t->rows;
+		while (r != NULL) {
+			if (row_matches_where(r, &wc)) {
+				for (int i = 0; i < t->col_count; i++) {
+					Cell* c = &r->cells[i];
+					if (c->type == DATA_INT)        printf("%-20d", c->int_val);
+					else if (c->type == DATA_FLOAT) printf("%-20f", c->float_val);
+					else if (c->type == DATA_TEXT)  printf("%-20s", c->text_val);
+				}
+				printf("\n");
+				found++;
+			}
+			r = r->next;
+		}
+		printf("(%d rows)\n", found);
 	}
 	else {
 		printf("error: invalid SELECT syntax\n");
@@ -289,7 +307,7 @@ static void parse_create(Database* db, char* tokens[], int count) {
 static void parse_delete(Database* db, char* tokens[], int count) {
 	if (count < 7 || strcasecmp(tokens[1], "from") != 0
 		|| strcasecmp(tokens[3], "where") != 0) {
-		printf("error: syntax is DELETE FROM <table> WHERE <col> = <val>\n");
+		printf("error: syntax is DELETE FROM <table> WHERE <col> <op> <val>\n");
 		return;
 	}
 
@@ -299,42 +317,83 @@ static void parse_delete(Database* db, char* tokens[], int count) {
 		return;
 	}
 
-	char* col_name = tokens[4];
-	int col_idx = -1;
-	for (int i = 0; i < t->col_count; i++) {
-		if (strcasecmp(t->columns[i].name, col_name) == 0) {
-			col_idx = i;
-			break;
-		}
-	}
-	if (col_idx < 0) {
-		printf("error: column '%s' not found\n", col_name);
-		return;
-	}
+	WhereClause wc;
+	if (!parse_where(t, tokens, 3, count, &wc)) return;
 
-	char* val_str = tokens[6];
-	Cell key;
-	key.type = t->columns[col_idx].type;
+	int deleted = rows_delete_where(t, &wc);
 
-	if (key.type == DATA_INT)        key.int_val = atoi(val_str);
-	else if (key.type == DATA_FLOAT) key.float_val = atof(val_str);
-	else {
-		if (*val_str == '\'') val_str++;
-		int vlen = (int)strlen(val_str);
-		if (vlen > 0 && val_str[vlen - 1] == '\'') val_str[vlen - 1] = '\0';
-		key.text_val = val_str;
-	}
-
-	row_delete(t, &key);
-	printf("Success\n");
+	if (deleted == 0) printf("error: no matching rows\n");
+	else printf("Success (%d rows deleted)\n", deleted);
 }
 
 static void parse_clear() {
-	#ifdef _WIN32
-		system("cls");
-	#else
-		system("clear");
-	#endif
+#ifdef _WIN32
+	system("cls");
+#else
+	system("clear");
+#endif
+}
+
+static int parse_where(Table* t, char* tokens[], int where_idx, int token_count, WhereClause* wc) {
+	wc->count = 0;
+	int i = where_idx + 1;
+
+	while (i + 2 <= token_count - 1 && wc->count < MAX_CONDITIONS) {
+		char* col_name = tokens[i];
+		char* op_str   = tokens[i + 1];
+		char* val_str  = tokens[i + 2];
+
+		int col_idx = -1;
+		for (int j = 0; j < t->col_count; j++) {
+			if (strcasecmp(t->columns[j].name, col_name) == 0) {
+				col_idx = j;
+				break;
+			}
+		}
+		if (col_idx < 0) {
+			printf("error: column '%s' not found\n", col_name);
+			return 0;
+		}
+
+		Operator op;
+		if      (strcmp(op_str, "=")  == 0) op = OP_EQ;
+		else if (strcmp(op_str, "!=") == 0) op = OP_NEQ;
+		else if (strcmp(op_str, "<")  == 0) op = OP_LT;
+		else if (strcmp(op_str, ">")  == 0) op = OP_GT;
+		else if (strcmp(op_str, "<=") == 0) op = OP_LTE;
+		else if (strcmp(op_str, ">=") == 0) op = OP_GTE;
+		else {
+			printf("error: unknown operator '%s'\n", op_str);
+			return 0;
+		}
+
+		Cell val;
+		val.type = t->columns[col_idx].type;
+		if (val.type == DATA_INT)        val.int_val   = atoi(val_str);
+		else if (val.type == DATA_FLOAT) val.float_val = atof(val_str);
+		else {
+			if (*val_str == '\'') val_str++;
+			int vlen = (int)strlen(val_str);
+			if (vlen > 0 && val_str[vlen - 1] == '\'') val_str[vlen - 1] = '\0';
+			val.text_val = val_str;
+		}
+
+		wc->conds[wc->count].col_idx = col_idx;
+		wc->conds[wc->count].op      = op;
+		wc->conds[wc->count].val     = val;
+		wc->count++;
+		i += 3;
+
+		if (i < token_count && wc->count < MAX_CONDITIONS) {
+			if (strcasecmp(tokens[i], "AND") == 0) { wc->logic[wc->count - 1] = LOGIC_AND; i++; }
+			else if (strcasecmp(tokens[i], "OR")  == 0) { wc->logic[wc->count - 1] = LOGIC_OR;  i++; }
+			else break;
+		} else {
+			break;
+		}
+	}
+
+	return wc->count > 0 ? 1 : 0;
 }
 
 static void dispatch(Database* db, char* tokens[], int count) {
