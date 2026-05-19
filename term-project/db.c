@@ -176,7 +176,24 @@ void db_free(Database* db) {
 	free(db);
 }
 
-static int cell_compare(Cell* a, Cell* b) {
+int rows_update_where(Table* t, int set_col_idx, Cell* new_val, WhereClause* wc) {
+	Row* r = t->rows;
+	int updated = 0;
+
+	while (r != NULL) {
+		if (row_matches_where(r, wc)) {
+			cell_free(&r->cells[set_col_idx]);
+			r->cells[set_col_idx] = *new_val;
+			if (new_val->type == DATA_TEXT && new_val->text_val != NULL)
+				r->cells[set_col_idx].text_val = _strdup(new_val->text_val);  // TEXT는 복사
+			updated++;
+		}
+		r = r->next;
+	}
+	return updated;
+}
+
+int cell_compare(Cell* a, Cell* b) {
 	if (a->type != b->type) return -1;
 
 	switch (a->type) {

@@ -171,70 +171,118 @@ static void parse_insert(Database* db, char* tokens[], int count) {
 }
 
 static void parse_select(Database* db, char* tokens[], int count) {
-	if (count < 4 || strcasecmp(tokens[2], "from") != 0) {
-		printf("error: syntax is SELECT * FROM <table> [WHERE col = val]\n");
+	if (count < 4) {
+		printf("error: syntax is SELECT [DISTINCT] <cols> FROM <table> [WHERE ...]\n");
 		return;
 	}
-	char* table_name = tokens[3];
+
+	int distinct = 0;
+	int col_start = 1;
+	if (strcasecmp(tokens[1], "DISTINCT") == 0) {
+		distinct = 1;
+		col_start = 2;
+	}
+
+	int from_idx = -1;
+	for (int i = col_start; i < count; i++) {
+		if (strcasecmp(tokens[i], "from") == 0) {
+			from_idx = i;
+			break;
+		}
+	}
+	if (from_idx < 0 || from_idx + 1 >= count) {
+		printf("error: syntax is SELECT [DISTINCT] <cols> FROM <table> [WHERE ...]\n");
+		return;
+	}
+
+	char* table_name = tokens[from_idx + 1];
 	Table* t = table_find(db, table_name);
 	if (t == NULL) {
 		printf("error: table '%s' not found\n", table_name);
 		return;
 	}
 
-	if (count == 4) {
-		for (int i = 0; i < t->col_count; i++) {
-			printf("%-20s", t->columns[i].name);
-		}
-		printf("\n");
-		printf("--------------------------------------------\n");
+	int sel_cols[MAX_COLUMNS];
+	int sel_count = 0;
 
-		if (t->rows == NULL) {
-			printf("(no rows)\n");
-			return;
-		}
+	if (strcmp(tokens[col_start], "*") == 0) {
+		for (int i = 0; i < t->col_count; i++) sel_cols[i] = i;
+		sel_count = t->col_count;
+	} else {
+		char col_buf[1024] = "";
+		for (int i = col_start; i < from_idx; i++)
+			strncat_s(col_buf, sizeof(col_buf), tokens[i], _TRUNCATE);
 
-		Row* r = t->rows;
-		while (r != NULL) {
+		char* ctx;
+		char* col_tok = strtok_s(col_buf, ",", &ctx);
+		while (col_tok && sel_count < MAX_COLUMNS) {
+			while (*col_tok == ' ') col_tok++;
+
+			int found = -1;
 			for (int i = 0; i < t->col_count; i++) {
-				Cell* c = &r->cells[i];
-				if (c->type == DATA_INT) printf("%-20d", c->int_val);
+				if (strcasecmp(t->columns[i].name, col_tok) == 0) {
+					found = i;
+					break;
+				}
+			}
+			if (found < 0) {
+				printf("error: column '%s' not found\n", col_tok);
+				return;
+			}
+			sel_cols[sel_count++] = found;
+			col_tok = strtok_s(NULL, ",", &ctx);
+		}
+	}
+
+	WhereClause wc;
+	wc.count = 0;
+	for (int i = from_idx + 2; i < count; i++) {
+		if (strcasecmp(tokens[i], "where") == 0) {
+			if (!parse_where(t, tokens, i, count, &wc)) return;
+			break;
+		}
+	}
+
+	for (int i = 0; i < sel_count; i++)
+		printf("%-20s", t->columns[sel_cols[i]].name);
+	printf("\n--------------------------------------------\n");
+
+	Row* seen[1024];
+	int seen_count = 0;
+	int found = 0;
+
+	Row* r = t->rows;
+	while (r != NULL) {
+		if (row_matches_where(r, &wc)) {
+
+			if (distinct) {
+				int dup = 0;
+				for (int s = 0; s < seen_count; s++) {
+					int same = 1;
+					for (int i = 0; i < sel_count; i++) {
+						if (cell_compare(&r->cells[sel_cols[i]], &seen[s]->cells[sel_cols[i]]) != 0) {
+							same = 0;
+							break;
+						}
+					}
+					if (same) { dup = 1; break; }
+				}
+				if (dup) { r = r->next; continue; }
+				seen[seen_count++] = r; 
+			}
+
+			for (int i = 0; i < sel_count; i++) {
+				Cell* c = &r->cells[sel_cols[i]];
+				if (c->type == DATA_INT)        printf("%-20d", c->int_val);
 				else if (c->type == DATA_FLOAT) printf("%-20f", c->float_val);
-				else if (c->type == DATA_TEXT) printf("%-20s", c->text_val);
+				else if (c->type == DATA_TEXT)  printf("%-20s", c->text_val);
 			}
 			printf("\n");
-			r = r->next;
+			found++;
 		}
-		printf("(%d rows)\n", t->row_count);
-
+		r = r->next;
 	}
-	else if (count > 4 && strcasecmp(tokens[4], "WHERE") == 0) {
-		WhereClause wc;
-		if (!parse_where(t, tokens, 4, count, &wc)) return;
-
-		for (int i = 0; i < t->col_count; i++) printf("%-20s", t->columns[i].name);
-		printf("\n--------------------------------------------\n");
-
-		int found = 0;
-		Row* r = t->rows;
-		while (r != NULL) {
-			if (row_matches_where(r, &wc)) {
-				for (int i = 0; i < t->col_count; i++) {
-					Cell* c = &r->cells[i];
-					if (c->type == DATA_INT)        printf("%-20d", c->int_val);
-					else if (c->type == DATA_FLOAT) printf("%-20f", c->float_val);
-					else if (c->type == DATA_TEXT)  printf("%-20s", c->text_val);
-				}
-				printf("\n");
-				found++;
-			}
-			r = r->next;
-		}
-		printf("(%d rows)\n", found);
-	}
-	else {
-		printf("error: invalid SELECT syntax\n");
-	}
+	printf("(%d rows)\n", found);
 }
 
 static void parse_create(Database* db, char* tokens[], int count) {
@@ -326,6 +374,53 @@ static void parse_delete(Database* db, char* tokens[], int count) {
 	else printf("Success (%d rows deleted)\n", deleted);
 }
 
+static void parse_update(Database* db, char* tokens[], int count) {
+	if (count < 10 || strcasecmp(tokens[2], "set") != 0
+		|| strcasecmp(tokens[6], "where") != 0) {
+		printf("error: syntax is UPDATE <table> SET <col> = <val> WHERE ...\n");
+		return;
+	}
+
+	Table* t = table_find(db, tokens[1]);
+	if (t == NULL) {
+		printf("error: table '%s' not found\n", tokens[1]);
+		return;
+	}
+
+	int set_col_idx = -1;
+	for (int i = 0; i < t->col_count; i++) {
+		if (strcasecmp(t->columns[i].name, tokens[3]) == 0) {
+			set_col_idx = i;
+			break;
+		}
+	}
+	if (set_col_idx < 0) {
+		printf("error: column '%s' not found\n", tokens[3]);
+		return;
+	}
+
+	char* val_str = tokens[5];
+	Cell new_val;
+	new_val.type = t->columns[set_col_idx].type;
+
+	if (new_val.type == DATA_INT)        new_val.int_val   = atoi(val_str);
+	else if (new_val.type == DATA_FLOAT) new_val.float_val = atof(val_str);
+	else {
+		if (*val_str == '\'') val_str++; 
+		int vlen = (int)strlen(val_str);
+		if (vlen > 0 && val_str[vlen - 1] == '\'') val_str[vlen - 1] = '\0';
+		new_val.text_val = val_str;
+	}
+
+	WhereClause wc;
+	if (!parse_where(t, tokens, 6, count, &wc)) return;
+
+	int updated = rows_update_where(t, set_col_idx, &new_val, &wc);
+
+	if (updated == 0) printf("error: no matching rows\n");
+	else printf("Success (%d rows updated)\n", updated);
+}
+
 static void parse_clear() {
 #ifdef _WIN32
 	system("cls");
@@ -411,7 +506,8 @@ static void dispatch(Database* db, char* tokens[], int count) {
 	else if (strcasecmp(cmd, "INSERT") == 0)     parse_insert(db, tokens, count);
 	else if (strcasecmp(cmd, "SELECT") == 0)     parse_select(db, tokens, count);
 	else if (strcasecmp(cmd, "CREATE") == 0)     parse_create(db, tokens, count);
-	else if (strcasecmp(cmd, "DELETE") == 0)    parse_delete(db, tokens, count);
+	else if (strcasecmp(cmd, "DELETE") == 0)     parse_delete(db, tokens, count);
+	else if (strcasecmp(cmd, "UPDATE") == 0)     parse_update(db, tokens, count);
 	else if (strcasecmp(cmd, "CLEAR") == 0)		parse_clear();
 	// UPDATE, DELETE, CREATE, SAVE, LOAD 는 동일한 패턴으로 추가
 	else    printf("error: unknown command '%s'\n", cmd);

@@ -90,8 +90,10 @@ void table_drop(Database* db, const char* name);
 Row* row_insert(Table* t, Cell* cells);
 Row* row_find_by_pk(Table* t, Cell* pk_val);
 void row_delete(Table* t, Cell* pk_val);
+int cell_compare(Cell* a, Cell* b);
 int row_matches_where(Row* r, WhereClause* wc);
 int rows_delete_where(Table* t, WhereClause* wc);
+int rows_update_where(Table* t, int set_col_idx, Cell* new_val, WhereClause* wc);
 
 #endif
 

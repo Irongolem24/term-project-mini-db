@@ -5,11 +5,11 @@
 | 회차 | 목표 | 상태 |
 |------|------|------|
 |   ~ 7 | REPL + 파서 — 명령어 입력/분기 동작 | 완료 |
-| 7 ~ 8 | DB 구조체 + 연산 — 메모리에 데이터 저장/조회 | 진행 중 |
+| 7 ~ 8 | DB 구조체 + 연산 — 메모리에 데이터 저장/조회 | 완료 |
 |   ~ 8 | 해시테이블 — PK O(1) 조회 | 미시작 |
-| 8 ~ 9 | 파서 ↔ DB 연결 — 명령어 실행 시 실제 데이터 변경 | 미시작 |
-|   ~ 9 | 파일 저장/로드 — 데이터 영속성 | 미시작 |
-|   ~ 9 | 마무리 — 메모리 누수 검증, 테스트 | 미시작 |
+| 8 ~ 9 | 파서 ↔ DB 연결 — 명령어 실행 시 실제 데이터 변경 | 완료 |
+|   ~ 9 | 파일 저장/로드 — 데이터 영속성 | 완료 |
+|   ~ 9 | 마무리 — 메모리 누수 검증, 테스트 | 진행 중 |
 
 ---
 
@@ -17,26 +17,27 @@
 
 | 파일 | 상태 | 설명 |
 |------|------|------|
-| `main.c` | 완료 | REPL 루프, 배너 출력 |
-| `parser.h / parser.c` | 완료 | tokenize, dispatch, parse_* |
-| `db.h` | 완료 | 구조체 정의 (Cell, Row, Column, Table, Database) |
-| `db.c` | 진행 중 | DB 연산 함수 구현 |
+| `main.c` | 완료 | REPL 루프, 자동 save/load |
+| `parser.h / parser.c` | 완료 | tokenize, dispatch, parse_* 전체 |
+| `db.h` | 완료 | 구조체 정의 + WhereClause, Operator, Condition |
+| `db.c` | 완료 | DB 연산 함수 전체 구현 |
+| `storage.h / storage.c` | 완료 | 자동 save / load 파일 I/O |
 | `hashtable.h / hashtable.c` | 미시작 | 해시테이블 구현 |
-| `storage.h / storage.c` | 미시작 | save / load 파일 I/O |
-| parser ↔ db 연결 | 미시작 | parse_* 함수에서 db.c 함수 호출 |
 
 ---
 
-### 1. db.c 완성
-- [ ] `db_create` — Database malloc + 초기화
-- [ ] `table_find` — 이름으로 테이블 탐색
-- [ ] `table_create` — 테이블 생성 + db linked list에 연결
-- [ ] `table_drop` — 테이블 + 모든 Row 메모리 해제
-- [ ] `row_insert` — Row malloc + cells 복사 + TEXT strdup
-- [ ] `row_find` — WHERE 조건으로 Row 찾기 (PK면 O(1), 아니면 O(n))
-- [ ] `row_update` — WHERE 조건에 맞는 모든 Row의 특정 컬럼 Cell 값 교체
-- [ ] `row_delete` — Row list에서 제거 + 메모리 해제
-- [ ] `db_free` — 전체 메모리 해제 (종료 시 호출)
+### 1. db.c
+- [x] `db_create` — Database malloc + 초기화
+- [x] `table_find` — 이름으로 테이블 탐색
+- [x] `table_create` — 테이블 생성 + db linked list에 연결
+- [x] `table_drop` — 테이블 + 모든 Row 메모리 해제
+- [x] `row_insert` — Row malloc + cells 복사 + TEXT strdup
+- [x] `row_find_by_pk` — PK로 Row 찾기
+- [x] `row_matches_where` — WHERE 조건 평가 (AND/OR, =, !=, <, >, <=, >=)
+- [x] `rows_update_where` — WHERE 조건에 맞는 Row 컬럼 값 교체
+- [x] `rows_delete_where` — WHERE 조건에 맞는 Row 삭제
+- [x] `cell_compare` — 두 Cell 비교
+- [x] `db_free` — 전체 메모리 해제
 
 ### 2. hashtable.c 구현
 - [ ] `ht_create(int bucket_count)` — 버킷 배열 malloc
@@ -47,61 +48,50 @@
 - [ ] `row_insert` / `row_delete`에 해시테이블 연동
 
 ### 3. parser ↔ db 연결
-- [ ] `main.c`에서 `db_create()` 호출, DB 인스턴스 생성
-- [ ] `parse_command()`에 DB 포인터 전달
-- [ ] `parse_create` → `table_create` 호출
-- [ ] `parse_drop` → `table_drop` 호출
-- [ ] `parse_insert` → `row_insert` 호출 (값 파싱 + 타입 변환 포함)
-- [ ] `parse_select` → WHERE 없으면 전체 출력, WHERE 있으면 `row_find_where` 호출, DISTINCT 있으면 `rows_distinct` 통해 중복 제거 후 출력
-- [ ] `rows_distinct` — 결과 Row 목록에서 중복 행 제거
-- [ ] `parse_update` → `row_find`로 Row 찾은 뒤 `row_update` 호출
-- [ ] `parse_delete` → `row_delete` 호출
-- [ ] `parse_show` → 테이블 목록 출력
-- [ ] `parse_describe` → 컬럼 목록 출력
+- [x] `parse_create` → `table_create` 호출
+- [x] `parse_drop` → `table_drop` 호출
+- [x] `parse_insert` → `row_insert` 호출 (값 파싱 + 타입 변환 + PK 중복 체크)
+- [x] `parse_select` → 전체 / 특정 컬럼 / DISTINCT / WHERE 지원
+- [x] `parse_update` → `rows_update_where` 호출
+- [x] `parse_delete` → `rows_delete_where` 호출
+- [x] `parse_show` → 테이블 목록 출력
+- [x] `parse_describe` → 컬럼 목록 출력
 
-### 4. storage.c 구현
-- [ ] `db_save(Database*, const char* path)` — 전체 DB를 텍스트로 저장
-- [ ] `db_load(Database*, const char* path)` — 파일 읽어서 DB 복원
-- [ ] 파일 포맷 (텍스트, CSV 유사):
-  ```
-  TABLE users
-  SCHEMA id INT PK, name TEXT, email TEXT
-  1,'Alice','alice@example.com'
-  END TABLE
-  ```
+### 4. storage.c
+- [x] `db_save` — 전체 DB를 텍스트로 저장
+- [x] `db_load` — 파일 읽어서 DB 복원
+- [x] 프로그램 시작 시 자동 로드, 종료 시 자동 저장
 
 ### 5. 마무리
-- [ ] `main.c` 종료 시 `db_free()` 호출
+- [x] `main.c` 종료 시 `db_free()` 호출
 - [ ] `_CrtDumpMemoryLeaks()` 추가 (메모리 누수 확인)
-- [ ] TC-01 ~ TC-05 테스트 시나리오 수동 실행
 - [ ] `HELP` 명령어 출력 내용 완성
-
----
-
-## 구현 권장 순서
-
-```
-db.c 완성 → hashtable.c → parser↔db 연결 → storage.c → 마무리
-```
+- [ ] TC-01 ~ TC-05 테스트 시나리오 수동 실행
 
 ---
 
 ## 스코프 및 한계
 
-### WHERE 문 한계
-- 단일 조건만 지원 (`WHERE col = val`)
-- `AND` / `OR` 다중 조건 미지원
-- `=` 연산자만 지원 — `>`, `<`, `>=`, `<=`, `!=`, `LIKE` 미지원
+### WHERE 문
+- 최대 4개 조건 (`MAX_CONDITIONS = 4`)
+- `AND` / `OR` 다중 조건 지원
+- `=`, `!=`, `<`, `>`, `<=`, `>=` 연산자 지원
 - 서브쿼리 미지원
+- 괄호를 이용한 우선순위 그룹핑 미지원 (왼쪽→오른쪽 순서 평가)
 
 ### DISTINCT
 - `SELECT DISTINCT * FROM table` — 전체 행 기준 중복 제거 지원
 - `SELECT DISTINCT col FROM table` — 특정 컬럼 기준 중복 제거 지원
 
+### LIMIT
+- `SELECT * FROM table LIMIT n` — 상위 n개 행만 출력
+- 현재 미구현 — 추가 시 `parse_select`에서 LIMIT 토큰 파싱 후 출력 카운터로 제한
+- `SELECT * FROM table WHERE ... LIMIT n` 조합도 지원 가능
+
 ### 변동 가능 항목
-- WHERE 연산자 확장 (`>`, `<` 등) — 현재 구현 후 여유가 있으면 추가
-- `ORDER BY` 정렬 — 미구현, 출력 순서는 삽입 역순 (linked list 특성)
-- 컬럼 수 상한 (`MAX_COLUMNS`) — 현재 상수로 고정, 필요 시 조정
+- `LIMIT` — 구현 여유 있으면 추가
+- `ORDER BY` 정렬 — 미구현, 출력 순서는 삽입 순 (load 시 역순 복원됨)
+- 컬럼 수 상한 (`MAX_COLUMNS = 8`) — 필요 시 조정
 
 ### 고정 스코프 (변경 없음)
 - 컬럼 타입: INT / TEXT / FLOAT 세 가지만
