@@ -10,6 +10,18 @@
 // 토크나이저
 #define MAX_TOKENS 64
 
+// ORDER BY 정렬용 전역 변수 (qsort 비교 함수에서 사용)
+static int g_order_col_idx;
+static int g_order_desc;
+
+// qsort에 넘길 비교 함수 — Row* 포인터 두 개를 받아 cell_compare로 비교
+static int compare_rows(const void* a, const void* b) {
+	Row* ra = *(Row**)a;
+	Row* rb = *(Row**)b;
+	int cmp = cell_compare(&ra->cells[g_order_col_idx], &rb->cells[g_order_col_idx]);
+	return g_order_desc ? -cmp : cmp;  // DESC면 부호 반전 → 내림차순
+}
+
 static int tokenize(char* input, char* tokens[]) {
 	int count = 0;
 	char* p = input;
@@ -172,7 +184,7 @@ static void parse_insert(Database* db, char* tokens[], int count) {
 
 static void parse_select(Database* db, char* tokens[], int count) {
 	if (count < 4) {
-		printf("error: syntax is SELECT [DISTINCT] <cols> FROM <table> [WHERE ...] [LIMIT n]\n");
+		printf("error: syntax is SELECT [DISTINCT] <cols> FROM <table> [WHERE ...] [ORDER BY col [ASC|DESC]] [LIMIT n]\n");
 		return;
 	}
 
@@ -193,7 +205,7 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		}
 	}
 	if (from_idx < 0 || from_idx + 1 >= count) {
-		printf("error: syntax is SELECT [DISTINCT] <cols> FROM <table> [WHERE ...] [LIMIT n]\n");
+		printf("error: syntax is SELECT [DISTINCT] <cols> FROM <table> [WHERE ...] [ORDER BY col [ASC|DESC]] [LIMIT n]\n");
 		return;
 	}
 
@@ -204,8 +216,8 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		return;
 	}
 
-	// LIMIT 토큰 탐색 — WHERE보다 먼저 찾아야 parse_where 범위 제한 가능
-	int limit = -1;     // -1 이면 LIMIT 없음
+	// LIMIT 토큰 탐색 (뒤에서부터 — 항상 맨 끝에 위치)
+	int limit = -1;
 	int limit_idx = -1;
 	for (int i = from_idx + 2; i < count; i++) {
 		if (strcasecmp(tokens[i], "LIMIT") == 0 && i + 1 < count) {
@@ -214,8 +226,45 @@ static void parse_select(Database* db, char* tokens[], int count) {
 			break;
 		}
 	}
-	// WHERE 파싱 시 LIMIT 이전 토큰까지만 처리
-	int where_end = (limit_idx >= 0) ? limit_idx : count;
+
+	// ORDER BY 토큰 탐색 (LIMIT 이전 범위에서)
+	int order_by_idx = -1;
+	int order_col_idx = -1;
+	int order_desc = 0;  // 0 = ASC, 1 = DESC
+	int ob_search_end = (limit_idx >= 0) ? limit_idx : count;
+	for (int i = from_idx + 2; i < ob_search_end - 1; i++) {
+		if (strcasecmp(tokens[i], "ORDER") == 0 && strcasecmp(tokens[i + 1], "BY") == 0) {
+			order_by_idx = i;
+			break;
+		}
+	}
+	if (order_by_idx >= 0) {
+		// ORDER BY 뒤에 컬럼명이 있어야 함
+		if (order_by_idx + 2 >= ob_search_end) {
+			printf("error: ORDER BY requires a column name\n");
+			return;
+		}
+		char* ob_col = tokens[order_by_idx + 2];
+		for (int i = 0; i < t->col_count; i++) {
+			if (strcasecmp(t->columns[i].name, ob_col) == 0) {
+				order_col_idx = i;
+				break;
+			}
+		}
+		if (order_col_idx < 0) {
+			printf("error: column '%s' not found\n", ob_col);
+			return;
+		}
+		// ASC / DESC 확인
+		int desc_pos = order_by_idx + 3;
+		if (desc_pos < ob_search_end && strcasecmp(tokens[desc_pos], "DESC") == 0)
+			order_desc = 1;
+	}
+
+	// WHERE 파싱 끝 위치: ORDER BY 또는 LIMIT 이전
+	int where_end = (order_by_idx >= 0) ? order_by_idx
+	              : (limit_idx   >= 0) ? limit_idx
+	              : count;
 
 	// 출력할 컬럼 인덱스 목록 구성
 	int sel_cols[MAX_COLUMNS];
@@ -252,7 +301,7 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		}
 	}
 
-	// WHERE 파싱 — where_end 까지만 토큰 읽음 (LIMIT 토큰 넘어가지 않도록)
+	// WHERE 파싱 — where_end 까지만 토큰 읽음
 	WhereClause wc;
 	wc.count = 0;
 	for (int i = from_idx + 2; i < where_end; i++) {
@@ -267,34 +316,46 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		printf("%-20s", t->columns[sel_cols[i]].name);
 	printf("\n--------------------------------------------\n");
 
-	Row* seen[1024];
-	int seen_count = 0;
-	int found = 0;
+	// ORDER BY 있을 때: 조건 맞는 행을 배열에 모아서 정렬 후 출력
+	if (order_by_idx >= 0) {
+		Row* matched[4096];
+		int matched_count = 0;
 
-	Row* r = t->rows;
-	while (r != NULL) {
-		// LIMIT 도달 시 출력 중단
-		if (limit >= 0 && found >= limit) break;
+		Row* r = t->rows;
+		while (r != NULL) {
+			if (row_matches_where(r, &wc) && matched_count < 4096)
+				matched[matched_count++] = r;
+			r = r->next;
+		}
 
-		if (row_matches_where(r, &wc)) {
-			// DISTINCT 중복 제거
+		// qsort로 정렬 — 전역 변수에 기준 컬럼/방향 저장 후 호출
+		g_order_col_idx = order_col_idx;
+		g_order_desc    = order_desc;
+		qsort(matched, matched_count, sizeof(Row*), compare_rows);
+
+		// 정렬된 순서로 출력
+		Row* seen[1024];
+		int seen_count = 0;
+		int found = 0;
+		for (int idx = 0; idx < matched_count; idx++) {
+			if (limit >= 0 && found >= limit) break;
+			Row* r = matched[idx];
+
 			if (distinct) {
 				int dup = 0;
 				for (int s = 0; s < seen_count; s++) {
 					int same = 1;
 					for (int i = 0; i < sel_count; i++) {
 						if (cell_compare(&r->cells[sel_cols[i]], &seen[s]->cells[sel_cols[i]]) != 0) {
-							same = 0;
-							break;
+							same = 0; break;
 						}
 					}
 					if (same) { dup = 1; break; }
 				}
-				if (dup) { r = r->next; continue; }
+				if (dup) continue;
 				seen[seen_count++] = r;
 			}
 
-			// 행 출력
 			for (int i = 0; i < sel_count; i++) {
 				Cell* c = &r->cells[sel_cols[i]];
 				if (c->type == DATA_INT)        printf("%-20d", c->int_val);
@@ -304,9 +365,47 @@ static void parse_select(Database* db, char* tokens[], int count) {
 			printf("\n");
 			found++;
 		}
-		r = r->next;
+		printf("(%d rows)\n", found);
+
+	} else {
+		// ORDER BY 없을 때: 기존 방식 (linked list 순회)
+		Row* seen[1024];
+		int seen_count = 0;
+		int found = 0;
+
+		Row* r = t->rows;
+		while (r != NULL) {
+			if (limit >= 0 && found >= limit) break;
+
+			if (row_matches_where(r, &wc)) {
+				if (distinct) {
+					int dup = 0;
+					for (int s = 0; s < seen_count; s++) {
+						int same = 1;
+						for (int i = 0; i < sel_count; i++) {
+							if (cell_compare(&r->cells[sel_cols[i]], &seen[s]->cells[sel_cols[i]]) != 0) {
+								same = 0; break;
+							}
+						}
+						if (same) { dup = 1; break; }
+					}
+					if (dup) { r = r->next; continue; }
+					seen[seen_count++] = r;
+				}
+
+				for (int i = 0; i < sel_count; i++) {
+					Cell* c = &r->cells[sel_cols[i]];
+					if (c->type == DATA_INT)        printf("%-20d", c->int_val);
+					else if (c->type == DATA_FLOAT) printf("%-20f", c->float_val);
+					else if (c->type == DATA_TEXT)  printf("%-20s", c->text_val);
+				}
+				printf("\n");
+				found++;
+			}
+			r = r->next;
+		}
+		printf("(%d rows)\n", found);
 	}
-	printf("(%d rows)\n", found);
 }
 
 static void parse_create(Database* db, char* tokens[], int count) {
