@@ -6,6 +6,7 @@
 #define DB_FILE "data.txt"
 
 #ifdef _WIN32
+    #include <crtdbg.h>
     #define strcasecmp _stricmp
 #endif
 
@@ -24,5 +25,6 @@ int main(void) {
 
     db_save(db, DB_FILE);
     db_free(db);
+    _CrtDumpMemoryLeaks();
     return 0;
 }

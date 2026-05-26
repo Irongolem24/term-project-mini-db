@@ -172,10 +172,11 @@ static void parse_insert(Database* db, char* tokens[], int count) {
 
 static void parse_select(Database* db, char* tokens[], int count) {
 	if (count < 4) {
-		printf("error: syntax is SELECT [DISTINCT] <cols> FROM <table> [WHERE ...]\n");
+		printf("error: syntax is SELECT [DISTINCT] <cols> FROM <table> [WHERE ...] [LIMIT n]\n");
 		return;
 	}
 
+	// DISTINCT 여부 확인
 	int distinct = 0;
 	int col_start = 1;
 	if (strcasecmp(tokens[1], "DISTINCT") == 0) {
@@ -183,6 +184,7 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		col_start = 2;
 	}
 
+	// FROM 위치 동적 탐색
 	int from_idx = -1;
 	for (int i = col_start; i < count; i++) {
 		if (strcasecmp(tokens[i], "from") == 0) {
@@ -191,7 +193,7 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		}
 	}
 	if (from_idx < 0 || from_idx + 1 >= count) {
-		printf("error: syntax is SELECT [DISTINCT] <cols> FROM <table> [WHERE ...]\n");
+		printf("error: syntax is SELECT [DISTINCT] <cols> FROM <table> [WHERE ...] [LIMIT n]\n");
 		return;
 	}
 
@@ -202,13 +204,29 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		return;
 	}
 
+	// LIMIT 토큰 탐색 — WHERE보다 먼저 찾아야 parse_where 범위 제한 가능
+	int limit = -1;     // -1 이면 LIMIT 없음
+	int limit_idx = -1;
+	for (int i = from_idx + 2; i < count; i++) {
+		if (strcasecmp(tokens[i], "LIMIT") == 0 && i + 1 < count) {
+			limit_idx = i;
+			limit = atoi(tokens[i + 1]);
+			break;
+		}
+	}
+	// WHERE 파싱 시 LIMIT 이전 토큰까지만 처리
+	int where_end = (limit_idx >= 0) ? limit_idx : count;
+
+	// 출력할 컬럼 인덱스 목록 구성
 	int sel_cols[MAX_COLUMNS];
 	int sel_count = 0;
 
 	if (strcmp(tokens[col_start], "*") == 0) {
+		// * 이면 전체 컬럼
 		for (int i = 0; i < t->col_count; i++) sel_cols[i] = i;
 		sel_count = t->col_count;
 	} else {
+		// 특정 컬럼만 선택
 		char col_buf[1024] = "";
 		for (int i = col_start; i < from_idx; i++)
 			strncat_s(col_buf, sizeof(col_buf), tokens[i], _TRUNCATE);
@@ -234,15 +252,17 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		}
 	}
 
+	// WHERE 파싱 — where_end 까지만 토큰 읽음 (LIMIT 토큰 넘어가지 않도록)
 	WhereClause wc;
 	wc.count = 0;
-	for (int i = from_idx + 2; i < count; i++) {
+	for (int i = from_idx + 2; i < where_end; i++) {
 		if (strcasecmp(tokens[i], "where") == 0) {
-			if (!parse_where(t, tokens, i, count, &wc)) return;
+			if (!parse_where(t, tokens, i, where_end, &wc)) return;
 			break;
 		}
 	}
 
+	// 헤더 출력
 	for (int i = 0; i < sel_count; i++)
 		printf("%-20s", t->columns[sel_cols[i]].name);
 	printf("\n--------------------------------------------\n");
@@ -253,8 +273,11 @@ static void parse_select(Database* db, char* tokens[], int count) {
 
 	Row* r = t->rows;
 	while (r != NULL) {
-		if (row_matches_where(r, &wc)) {
+		// LIMIT 도달 시 출력 중단
+		if (limit >= 0 && found >= limit) break;
 
+		if (row_matches_where(r, &wc)) {
+			// DISTINCT 중복 제거
 			if (distinct) {
 				int dup = 0;
 				for (int s = 0; s < seen_count; s++) {
@@ -268,9 +291,10 @@ static void parse_select(Database* db, char* tokens[], int count) {
 					if (same) { dup = 1; break; }
 				}
 				if (dup) { r = r->next; continue; }
-				seen[seen_count++] = r; 
+				seen[seen_count++] = r;
 			}
 
+			// 행 출력
 			for (int i = 0; i < sel_count; i++) {
 				Cell* c = &r->cells[sel_cols[i]];
 				if (c->type == DATA_INT)        printf("%-20d", c->int_val);
