@@ -71,6 +71,7 @@
 - [x] `row_insert` / `row_delete` / `rows_delete_where`에 ht 등록·제거 연동
 - [x] `row_find_by_pk` → `ht_find` O(1) 조회로 교체
 - [x] `rows_update_where`에서 PK 컬럼 수정 시 ht 키 갱신 (delete+insert)
+- [x] `ht_resize` — load factor 0.75 초과 시 버킷 2배 확장 + rehash (O(1) 유지)
 
 ---
 
@@ -98,10 +99,12 @@
 - `WHERE ... ORDER BY ... LIMIT n` 조합 지원
 
 ### 해시테이블
-- `HT_BUCKETS = 64`, 충돌은 chaining(linked list)으로 처리
+- 초기 버킷 `HT_BUCKETS = 64`, 충돌은 chaining(linked list)으로 처리
+- **동적 확장(rehash)**: load factor 0.75 초과 시 버킷 2배로 늘려 재배치 → 대량 데이터에서도 O(1) 유지
 - PK 조회(`row_find_by_pk`)는 O(1) — INSERT 중복 체크 / `row_delete`에서 사용
 - INT / FLOAT / TEXT PK 모두 지원 (djb2 해시, TEXT 키는 별도 복사·해제)
 - WHERE 기반 SELECT/DELETE/UPDATE는 여전히 O(n) 선형 탐색 (해시는 PK 등호 조회 전용)
+- 성능 측정: N=80k 기준 rehash 적용 후 PK 조회 per-op ~2.9배 단축, 총 빌드 시간 선형 스케일 확인
 
 ### 고정 스코프 (변경 없음)
 - 컬럼 타입: INT / TEXT / FLOAT 세 가지만

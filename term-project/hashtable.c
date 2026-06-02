@@ -66,6 +66,29 @@ HashTable* ht_create(int bucket_count) {
 	return ht;
 }
 
+// 버킷 수를 2배로 늘리고 모든 엔트리를 재배치 (rehash)
+// 기존 HtEntry 노드를 그대로 재사용하므로 키 복사/해제는 없음
+static void ht_resize(HashTable* ht) {
+	int new_count = ht->bucket_count * 2;
+	HtEntry** new_buckets = (HtEntry**)calloc(new_count, sizeof(HtEntry*));
+	if (new_buckets == NULL) return;   // 메모리 부족 시 기존 상태 유지
+
+	for (int i = 0; i < ht->bucket_count; i++) {
+		HtEntry* e = ht->buckets[i];
+		while (e != NULL) {
+			HtEntry* next = e->next;
+			int idx = (int)(hash_cell(&e->key) % new_count);  // 새 버킷 수로 재계산
+			e->next = new_buckets[idx];
+			new_buckets[idx] = e;
+			e = next;
+		}
+	}
+
+	free(ht->buckets);
+	ht->buckets = new_buckets;
+	ht->bucket_count = new_count;
+}
+
 void ht_insert(HashTable* ht, Cell* key, Row* row) {
 	if (ht == NULL) return;
 
@@ -81,6 +104,11 @@ void ht_insert(HashTable* ht, Cell* key, Row* row) {
 	e->next = ht->buckets[idx];
 	ht->buckets[idx] = e;
 	ht->size++;
+
+	// 4. load factor가 0.75를 넘으면 버킷을 2배로 확장 → 체인 길이를 짧게 유지 (O(1) 보장)
+	if (ht->size > ht->bucket_count * 3 / 4) {
+		ht_resize(ht);
+	}
 }
 
 Row* ht_find(HashTable* ht, Cell* key) {
