@@ -1,4 +1,4 @@
-#include <stdio.h>
+﻿#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "parser.h"
@@ -552,6 +552,45 @@ static void parse_clear() {
 #endif
 }
 
+static void parse_help() {
+	printf("\n");
+	printf("=== Mini-SQLite 명령어 도움말 ===\n");
+	printf("\n");
+	printf("[ 테이블 (DDL) ]\n");
+	printf("  CREATE TABLE <name> (col TYPE [PRIMARY KEY], ...)\n");
+	printf("      예: CREATE TABLE users (id INT PRIMARY KEY, name TEXT, age INT)\n");
+	printf("      타입: INT / TEXT / FLOAT\n");
+	printf("  DROP TABLE <name>            테이블 삭제\n");
+	printf("  SHOW TABLES                  테이블 목록 출력\n");
+	printf("  DESCRIBE <name>              컬럼 구조 출력\n");
+	printf("\n");
+	printf("[ 데이터 (DML) ]\n");
+	printf("  INSERT INTO <name> VALUES (val, ...)\n");
+	printf("      예: INSERT INTO users VALUES (1, 'Alice', 20)\n");
+	printf("  SELECT [DISTINCT] <cols|*> FROM <name>\n");
+	printf("         [WHERE <cond>] [ORDER BY <col> [ASC|DESC]] [LIMIT <n>]\n");
+	printf("      예: SELECT * FROM users\n");
+	printf("      예: SELECT name, age FROM users WHERE age >= 20 ORDER BY age DESC LIMIT 5\n");
+	printf("  UPDATE <name> SET <col> = <val> WHERE <cond>\n");
+	printf("      예: UPDATE users SET age = 21 WHERE id = 1\n");
+	printf("  DELETE FROM <name> WHERE <cond>\n");
+	printf("      예: DELETE FROM users WHERE id = 1\n");
+	printf("\n");
+	printf("[ WHERE 조건 ]\n");
+	printf("  연산자: =  !=  <  >  <=  >=\n");
+	printf("  결합:   AND / OR  (최대 4개 조건, 왼쪽->오른쪽 평가)\n");
+	printf("      예: WHERE age > 20 AND name != 'Bob'\n");
+	printf("\n");
+	printf("[ 유틸리티 ]\n");
+	printf("  HELP                         이 도움말 출력\n");
+	printf("  CLEAR                        화면 지우기\n");
+	printf("  EXIT (또는 QUIT)             종료 (자동 저장)\n");
+	printf("\n");
+	printf("문자열은 작은따옴표로 감쌉니다: 'Alice'\n");
+	printf("명령어는 대소문자를 구분하지 않습니다.\n");
+	printf("\n");
+}
+
 static int parse_where(Table* t, char* tokens[], int where_idx, int token_count, WhereClause* wc) {
 	wc->count = 0;
 	int i = where_idx + 1;
@@ -622,7 +661,7 @@ static void dispatch(Database* db, char* tokens[], int count) {
 	if (strcasecmp(cmd, "EXIT") == 0
 		|| strcasecmp(cmd, "QUIT") == 0) { /* main에서 처리 */
 	}
-	else if (strcasecmp(cmd, "HELP") == 0)       printf("(help 출력)\n");
+	else if (strcasecmp(cmd, "HELP") == 0)       parse_help();
 	else if (strcasecmp(cmd, "SHOW") == 0)       parse_show(db, tokens, count);
 	else if (strcasecmp(cmd, "DESCRIBE") == 0)   parse_describe(db, tokens, count);
 	else if (strcasecmp(cmd, "DROP") == 0)       parse_drop(db, tokens, count);
