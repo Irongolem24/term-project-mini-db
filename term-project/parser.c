@@ -7,19 +7,16 @@
 #define strcasecmp _stricmp
 #endif
 
-// 토크나이저
 #define MAX_TOKENS 64
 
-// ORDER BY 정렬용 전역 변수 (qsort 비교 함수에서 사용)
 static int g_order_col_idx;
 static int g_order_desc;
 
-// qsort에 넘길 비교 함수 — Row* 포인터 두 개를 받아 cell_compare로 비교
 static int compare_rows(const void* a, const void* b) {
 	Row* ra = *(Row**)a;
 	Row* rb = *(Row**)b;
 	int cmp = cell_compare(&ra->cells[g_order_col_idx], &rb->cells[g_order_col_idx]);
-	return g_order_desc ? -cmp : cmp;  // DESC면 부호 반전 → 내림차순
+	return g_order_desc ? -cmp : cmp;
 }
 
 static int tokenize(char* input, char* tokens[]) {
@@ -188,7 +185,6 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		return;
 	}
 
-	// DISTINCT 여부 확인
 	int distinct = 0;
 	int col_start = 1;
 	if (strcasecmp(tokens[1], "DISTINCT") == 0) {
@@ -196,7 +192,6 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		col_start = 2;
 	}
 
-	// FROM 위치 동적 탐색
 	int from_idx = -1;
 	for (int i = col_start; i < count; i++) {
 		if (strcasecmp(tokens[i], "from") == 0) {
@@ -216,7 +211,6 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		return;
 	}
 
-	// LIMIT 토큰 탐색 (뒤에서부터 — 항상 맨 끝에 위치)
 	int limit = -1;
 	int limit_idx = -1;
 	for (int i = from_idx + 2; i < count; i++) {
@@ -227,10 +221,9 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		}
 	}
 
-	// ORDER BY 토큰 탐색 (LIMIT 이전 범위에서)
 	int order_by_idx = -1;
 	int order_col_idx = -1;
-	int order_desc = 0;  // 0 = ASC, 1 = DESC
+	int order_desc = 0;
 	int ob_search_end = (limit_idx >= 0) ? limit_idx : count;
 	for (int i = from_idx + 2; i < ob_search_end - 1; i++) {
 		if (strcasecmp(tokens[i], "ORDER") == 0 && strcasecmp(tokens[i + 1], "BY") == 0) {
@@ -239,7 +232,6 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		}
 	}
 	if (order_by_idx >= 0) {
-		// ORDER BY 뒤에 컬럼명이 있어야 함
 		if (order_by_idx + 2 >= ob_search_end) {
 			printf("error: ORDER BY requires a column name\n");
 			return;
@@ -255,27 +247,22 @@ static void parse_select(Database* db, char* tokens[], int count) {
 			printf("error: column '%s' not found\n", ob_col);
 			return;
 		}
-		// ASC / DESC 확인
 		int desc_pos = order_by_idx + 3;
 		if (desc_pos < ob_search_end && strcasecmp(tokens[desc_pos], "DESC") == 0)
 			order_desc = 1;
 	}
 
-	// WHERE 파싱 끝 위치: ORDER BY 또는 LIMIT 이전
 	int where_end = (order_by_idx >= 0) ? order_by_idx
 	              : (limit_idx   >= 0) ? limit_idx
 	              : count;
 
-	// 출력할 컬럼 인덱스 목록 구성
 	int sel_cols[MAX_COLUMNS];
 	int sel_count = 0;
 
 	if (strcmp(tokens[col_start], "*") == 0) {
-		// * 이면 전체 컬럼
 		for (int i = 0; i < t->col_count; i++) sel_cols[i] = i;
 		sel_count = t->col_count;
 	} else {
-		// 특정 컬럼만 선택
 		char col_buf[1024] = "";
 		for (int i = col_start; i < from_idx; i++)
 			strncat_s(col_buf, sizeof(col_buf), tokens[i], _TRUNCATE);
@@ -301,7 +288,6 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		}
 	}
 
-	// WHERE 파싱 — where_end 까지만 토큰 읽음
 	WhereClause wc;
 	wc.count = 0;
 	for (int i = from_idx + 2; i < where_end; i++) {
@@ -311,12 +297,10 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		}
 	}
 
-	// 헤더 출력
 	for (int i = 0; i < sel_count; i++)
 		printf("%-20s", t->columns[sel_cols[i]].name);
 	printf("\n--------------------------------------------\n");
 
-	// ORDER BY 있을 때: 조건 맞는 행을 배열에 모아서 정렬 후 출력
 	if (order_by_idx >= 0) {
 		Row* matched[4096];
 		int matched_count = 0;
@@ -328,12 +312,10 @@ static void parse_select(Database* db, char* tokens[], int count) {
 			r = r->next;
 		}
 
-		// qsort로 정렬 — 전역 변수에 기준 컬럼/방향 저장 후 호출
 		g_order_col_idx = order_col_idx;
 		g_order_desc    = order_desc;
 		qsort(matched, matched_count, sizeof(Row*), compare_rows);
 
-		// 정렬된 순서로 출력
 		Row* seen[1024];
 		int seen_count = 0;
 		int found = 0;
@@ -368,7 +350,6 @@ static void parse_select(Database* db, char* tokens[], int count) {
 		printf("(%d rows)\n", found);
 
 	} else {
-		// ORDER BY 없을 때: 기존 방식 (linked list 순회)
 		Row* seen[1024];
 		int seen_count = 0;
 		int found = 0;
@@ -529,7 +510,7 @@ static void parse_update(Database* db, char* tokens[], int count) {
 	if (new_val.type == DATA_INT)        new_val.int_val   = atoi(val_str);
 	else if (new_val.type == DATA_FLOAT) new_val.float_val = atof(val_str);
 	else {
-		if (*val_str == '\'') val_str++; 
+		if (*val_str == '\'') val_str++;
 		int vlen = (int)strlen(val_str);
 		if (vlen > 0 && val_str[vlen - 1] == '\'') val_str[vlen - 1] = '\0';
 		new_val.text_val = val_str;
@@ -659,7 +640,7 @@ static void dispatch(Database* db, char* tokens[], int count) {
 	char* cmd = tokens[0];
 
 	if (strcasecmp(cmd, "EXIT") == 0
-		|| strcasecmp(cmd, "QUIT") == 0) { /* main에서 처리 */
+		|| strcasecmp(cmd, "QUIT") == 0) {
 	}
 	else if (strcasecmp(cmd, "HELP") == 0)       parse_help();
 	else if (strcasecmp(cmd, "SHOW") == 0)       parse_show(db, tokens, count);
@@ -671,7 +652,6 @@ static void dispatch(Database* db, char* tokens[], int count) {
 	else if (strcasecmp(cmd, "DELETE") == 0)     parse_delete(db, tokens, count);
 	else if (strcasecmp(cmd, "UPDATE") == 0)     parse_update(db, tokens, count);
 	else if (strcasecmp(cmd, "CLEAR") == 0)		parse_clear();
-	// UPDATE, DELETE, CREATE, SAVE, LOAD 는 동일한 패턴으로 추가
 	else    printf("error: unknown command '%s'\n", cmd);
 }
 

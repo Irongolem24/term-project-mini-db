@@ -58,7 +58,7 @@
 ### 4. 마무리
 - [x] `main.c` 종료 시 `db_free()` 호출
 - [x] `_CrtDumpMemoryLeaks()` 추가 (메모리 누수 확인)
-- [ ] `HELP` 명령어 출력 내용 완성
+- [x] `HELP` 명령어 출력 내용 완성
 - [ ] TC-01 ~ TC-05 테스트 시나리오 수동 실행
 
 ### 5. 해시테이블 (hashtable.c)

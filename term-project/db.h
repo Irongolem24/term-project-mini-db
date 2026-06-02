@@ -40,7 +40,7 @@ typedef struct {
 	int is_pk;
 } Column;
 
-struct HashTable;   // 전방 선언 (실제 정의는 hashtable.h) — 순환 include 회피
+struct HashTable;
 
 typedef struct Table {
 	char name[MAX_NAME_LEN];
@@ -48,7 +48,7 @@ typedef struct Table {
 	int col_count;
 	Row* rows;
 	int row_count;
-	struct HashTable* ht;   // PK → Row* 해시테이블 (O(1) 조회)
+	struct HashTable* ht;
 	struct Table* next;
 } Table;
 
@@ -79,7 +79,7 @@ typedef struct {
 
 typedef struct {
 	Condition conds[MAX_CONDITIONS];
-	LogicOp   logic[MAX_CONDITIONS - 1]; 
+	LogicOp   logic[MAX_CONDITIONS - 1];
 	int       count;
 } WhereClause;
 
@@ -99,4 +99,3 @@ int rows_delete_where(Table* t, WhereClause* wc);
 int rows_update_where(Table* t, int set_col_idx, Cell* new_val, WhereClause* wc);
 
 #endif
-
