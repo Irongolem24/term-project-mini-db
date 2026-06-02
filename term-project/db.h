@@ -40,12 +40,15 @@ typedef struct {
 	int is_pk;
 } Column;
 
+struct HashTable;   // 전방 선언 (실제 정의는 hashtable.h) — 순환 include 회피
+
 typedef struct Table {
 	char name[MAX_NAME_LEN];
 	Column columns[MAX_COLUMNS];
 	int col_count;
 	Row* rows;
 	int row_count;
+	struct HashTable* ht;   // PK → Row* 해시테이블 (O(1) 조회)
 	struct Table* next;
 } Table;
 

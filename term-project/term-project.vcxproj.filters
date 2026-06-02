@@ -24,6 +24,9 @@
     <ClCompile Include="db.c">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="hashtable.c">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
     <ClCompile Include="storage.c">
       <Filter>소스 파일</Filter>
     </ClCompile>
@@ -33,6 +36,9 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="db.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="hashtable.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="storage.h">

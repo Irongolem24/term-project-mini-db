@@ -10,7 +10,7 @@
 |   ~ 9 | 파일 저장/로드 — 데이터 영속성 | 완료 |
 |   ~ 9 | SELECT 고급 기능 — DISTINCT / ORDER BY / LIMIT | 완료 |
 |   ~ 9 | 마무리 — 메모리 누수 검증, 테스트 | 진행 중 |
-|   선택 | 해시테이블 — PK O(1) 조회 | 미시작 |
+|   ~ 9 | 해시테이블 — PK O(1) 조회 | 완료 |
 
 ---
 
@@ -23,7 +23,7 @@
 | `db.h` | 완료 | 구조체 정의 + WhereClause, Operator, Condition |
 | `db.c` | 완료 | DB 연산 함수 전체 구현 |
 | `storage.h / storage.c` | 완료 | 자동 save / load 파일 I/O |
-| `hashtable.h / hashtable.c` | 선택 | 해시테이블 구현 (선택 사항) |
+| `hashtable.h / hashtable.c` | 완료 | PK → Row* 해시테이블 (chaining) |
 
 ---
 
@@ -61,13 +61,16 @@
 - [ ] `HELP` 명령어 출력 내용 완성
 - [ ] TC-01 ~ TC-05 테스트 시나리오 수동 실행
 
-### 5. 선택 — 해시테이블
-- [ ] `ht_create(int bucket_count)` — 버킷 배열 malloc
-- [ ] `ht_insert(HashTable*, Cell* pk, Row*)` — 해시 계산 후 버킷에 연결
-- [ ] `ht_find(HashTable*, Cell* pk)` — O(1) 조회
-- [ ] `ht_delete(HashTable*, Cell* pk)` — 버킷에서 제거
-- [ ] `ht_free(HashTable*)` — 버킷 배열 해제
-- [ ] `row_insert` / `row_delete`에 해시테이블 연동
+### 5. 해시테이블 (hashtable.c)
+- [x] `ht_create(int bucket_count)` — 버킷 배열 calloc
+- [x] `ht_insert(HashTable*, Cell* pk, Row*)` — djb2 해시 후 버킷 앞에 연결 (chaining)
+- [x] `ht_find(HashTable*, Cell* pk)` — O(1) 조회
+- [x] `ht_delete(HashTable*, Cell* pk)` — 버킷에서 제거 + TEXT 키 해제
+- [x] `ht_free(HashTable*)` — 전체 엔트리 + 버킷 배열 해제
+- [x] `table_create` / `table_drop`에 ht 생성·해제 연동
+- [x] `row_insert` / `row_delete` / `rows_delete_where`에 ht 등록·제거 연동
+- [x] `row_find_by_pk` → `ht_find` O(1) 조회로 교체
+- [x] `rows_update_where`에서 PK 컬럼 수정 시 ht 키 갱신 (delete+insert)
 
 ---
 
@@ -93,6 +96,12 @@
 - `qsort` 기반 O(n log n) 정렬
 - INT / FLOAT / TEXT 타입 모두 지원
 - `WHERE ... ORDER BY ... LIMIT n` 조합 지원
+
+### 해시테이블
+- `HT_BUCKETS = 64`, 충돌은 chaining(linked list)으로 처리
+- PK 조회(`row_find_by_pk`)는 O(1) — INSERT 중복 체크 / `row_delete`에서 사용
+- INT / FLOAT / TEXT PK 모두 지원 (djb2 해시, TEXT 키는 별도 복사·해제)
+- WHERE 기반 SELECT/DELETE/UPDATE는 여전히 O(n) 선형 탐색 (해시는 PK 등호 조회 전용)
 
 ### 고정 스코프 (변경 없음)
 - 컬럼 타입: INT / TEXT / FLOAT 세 가지만

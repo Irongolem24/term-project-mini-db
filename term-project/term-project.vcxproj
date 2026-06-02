@@ -20,12 +20,14 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="db.c" />
+    <ClCompile Include="hashtable.c" />
     <ClCompile Include="main.c" />
     <ClCompile Include="parser.c" />
     <ClCompile Include="storage.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="db.h" />
+    <ClInclude Include="hashtable.h" />
     <ClInclude Include="parser.h" />
     <ClInclude Include="storage.h" />
   </ItemGroup>

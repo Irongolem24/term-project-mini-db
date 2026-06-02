@@ -2,10 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include "db.h"
+#include "hashtable.h"
 
 #ifdef _WIN32
 	#define strcasecmp _stricmp
 #endif
+
+static int pk_col_index(Table* t);   // 전방 선언 (row_insert에서 먼저 사용)
 
 Database* db_create() {
 	Database* db = (Database*)malloc(sizeof(Database));
@@ -48,6 +51,8 @@ Table* table_create(
 	t->rows = NULL;
 	t->row_count = 0;
 
+	t->ht = ht_create(HT_BUCKETS);   // PK 조회용 해시테이블 생성
+
 	t->next = db->tables;
 	db->tables = t;
 	db->table_count++;
@@ -84,6 +89,12 @@ Row* row_insert(Table* t, Cell* cells) {
 	t->rows = row;
 	t->row_count++;
 
+	// PK가 있으면 해시테이블에도 등록 (row의 PK 셀을 키로)
+	int pk_idx = pk_col_index(t);
+	if (pk_idx >= 0) {
+		ht_insert(t->ht, &row->cells[pk_idx], row);
+	}
+
 	return row;
 }
 
@@ -108,14 +119,7 @@ Row* row_find_by_pk(Table* t, Cell* pk_val) {
 	int pk_idx = pk_col_index(t);
 	if (pk_idx < 0) return NULL;
 
-	Row* r = t->rows;
-	while (r != NULL) {
-		if (pk_match(&r->cells[pk_idx], pk_val)) {
-			return r;
-		}
-		r = r->next;
-	}
-	return NULL;
+	return ht_find(t->ht, pk_val);   // O(1) 해시 조회 (기존 linked list 순회 대체)
 }
 
 void row_delete(Table* t, Cell* pk_val) {
@@ -130,6 +134,7 @@ void row_delete(Table* t, Cell* pk_val) {
 			if (prev == NULL) t->rows = cur->next;
 			else prev->next = cur->next;
 
+			ht_delete(t->ht, pk_val);   // 해시테이블에서도 제거
 			row_free(cur, t->col_count);
 			t->row_count--;
 			return;
@@ -152,6 +157,7 @@ void table_drop(Database* db, const char* name) {
 				row_free(r, cur->col_count);
 				r = next;
 			}
+			ht_free(cur->ht);   // 해시테이블 메모리 해제
 			if (prev == NULL) db->tables = cur->next;
 			else prev->next = cur->next;
 
@@ -177,15 +183,26 @@ void db_free(Database* db) {
 }
 
 int rows_update_where(Table* t, int set_col_idx, Cell* new_val, WhereClause* wc) {
+	int pk_idx = pk_col_index(t);   // PK 컬럼을 수정하는지 판단용
 	Row* r = t->rows;
 	int updated = 0;
 
 	while (r != NULL) {
 		if (row_matches_where(r, wc)) {
+			// PK 컬럼을 바꾸는 경우: 옛 키로 해시 엔트리 먼저 제거
+			if (set_col_idx == pk_idx) {
+				ht_delete(t->ht, &r->cells[set_col_idx]);
+			}
+
 			cell_free(&r->cells[set_col_idx]);
 			r->cells[set_col_idx] = *new_val;
 			if (new_val->type == DATA_TEXT && new_val->text_val != NULL)
 				r->cells[set_col_idx].text_val = _strdup(new_val->text_val);  // TEXT는 복사
+
+			// PK 컬럼을 바꿨으면 새 키로 해시에 다시 등록
+			if (set_col_idx == pk_idx) {
+				ht_insert(t->ht, &r->cells[set_col_idx], r);
+			}
 			updated++;
 		}
 		r = r->next;
@@ -221,6 +238,7 @@ static int eval_op(int cmp, Operator op) {
 }
 
 int rows_delete_where(Table* t, WhereClause* wc) {
+	int pk_idx = pk_col_index(t);   // 해시테이블에서도 지우기 위함
 	Row* prev = NULL;
 	Row* cur = t->rows;
 	int deleted = 0;
@@ -230,6 +248,10 @@ int rows_delete_where(Table* t, WhereClause* wc) {
 		if (row_matches_where(cur, wc)) {
 			if (prev == NULL) t->rows = next;
 			else prev->next = next;
+
+			if (pk_idx >= 0) {
+				ht_delete(t->ht, &cur->cells[pk_idx]);   // dangling 방지
+			}
 			row_free(cur, t->col_count);
 			t->row_count--;
 			deleted++;
