@@ -11,6 +11,12 @@
 #endif
 
 int main(void) {
+#ifdef _WIN32
+    // 누수 리포트를 디버거 출력창 대신 stderr로 보내 콘솔에서도 확인 가능하게 함
+    _CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_WARN, _CRTDBG_FILE_STDERR);
+#endif
+
     Database* db = db_create();
     char buf[1024];
 
